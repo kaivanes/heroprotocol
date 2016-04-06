@@ -1,14 +1,14 @@
 #!/usr/bin/env python
 
 import sys
-from setuptools import setup
+from setuptools import setup, find_packages
 
 setup(name='heroprotocol',
       version='41810',
       author='Blizzard',
       url='http://github.com/Blizzard/heroprotocol',
       description='Python library to decode Heroes of the Storm replay protocols',
-      py_modules=['heroprotocol'],
+      packages=find_packages(exclude=['ez_setup', 'tests', 'tests.*']),
       classifiers=[
         'Development Status :: 3 - Alpha',
         'Environment :: Console',

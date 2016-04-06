@@ -24,7 +24,7 @@ import sys
 from importlib import import_module
 from collections import defaultdict
 
-import mpyq
+from . import mpyq
 from . import protocol29406
 
 
@@ -69,9 +69,9 @@ class Replay:
         # The header's base_build determines which protocol to use
         self.base_build = self.header['m_version']['m_baseBuild']
         try:
-            self.protocol = import_module('protocol%s' % (self.base_build,), '.')
+            self.protocol = import_module('.protocol%s' % (self.base_build,), 'heroprotocol')
         except:
-            raise RuntimeError('Unsupported base build: %d' % self.base_build, file=sys.stderr)
+            raise RuntimeError('Unsupported base build: %d' % self.base_build)
 
         self.details = []
         self.initdata = []
