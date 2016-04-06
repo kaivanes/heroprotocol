@@ -19,6 +19,7 @@
 # THE SOFTWARE.
 
 import struct
+import six
 
 
 class TruncatedError(Exception):
@@ -40,7 +41,7 @@ class BitPackedBuffer:
     def __str__(self):
         return 'buffer(%02x/%d,[%d]=%s)' % (
             self._nextbits and self._next or 0, self._nextbits,
-            self._used, '%02x' % (ord(self._data[self._used]),) if (self._used < len(self._data)) else '--')
+            self._used, '%02x' % (six.byte2int(self._data[self._used]),) if (self._used < len(self._data)) else '--')
 
     def done(self):
         return self._nextbits == 0 and self._used >= len(self._data)
@@ -51,28 +52,28 @@ class BitPackedBuffer:
     def byte_align(self):
         self._nextbits = 0
 
-    def read_aligned_bytes(self, bytes):
+    def read_aligned_bytes(self, nbytes):
         self.byte_align()
-        data = self._data[self._used:self._used + bytes]
-        self._used += bytes
-        if len(data) != bytes:
+        data = self._data[self._used:self._used + nbytes]
+        self._used += nbytes
+        if len(data) != nbytes:
             raise TruncatedError(self)
         return data
 
-    def read_bits(self, bits):
+    def read_bits(self, nbits):
         result = 0
         resultbits = 0
-        while resultbits != bits:
+        while resultbits != nbits:
             if self._nextbits == 0:
                 if self.done():
                     raise TruncatedError(self)
-                self._next = ord(self._data[self._used])
+                self._next = six.indexbytes(self._data, self._used)
                 self._used += 1
                 self._nextbits = 8
-            copybits = min(bits - resultbits, self._nextbits)
+            copybits = min(nbits - resultbits, self._nextbits)
             copy = (self._next & ((1 << copybits) - 1))
             if self._bigendian:
-                result |= copy << (bits - resultbits - copybits)
+                result |= copy << (nbits - resultbits - copybits)
             else:
                 result |= copy << resultbits
             self._next >>= copybits
@@ -80,8 +81,8 @@ class BitPackedBuffer:
             resultbits += copybits
         return result
 
-    def read_unaligned_bytes(self, bytes):
-        return ''.join([chr(self.read_bits(8)) for i in xrange(bytes)])
+    def read_unaligned_bytes(self, nbytes):
+        return b''.join([six.int2byte(self.read_bits(8)) for _ in six.moves.range(nbytes)])
 
 
 class BitPackedDecoder:
@@ -109,11 +110,11 @@ class BitPackedDecoder:
 
     def _array(self, bounds, typeid):
         length = self._int(bounds)
-        return [self.instance(typeid) for i in xrange(length)]
+        return [self.instance(typeid) for i in six.moves.range(length)]
 
     def _bitarray(self, bounds):
         length = self._int(bounds)
-        return (length, self._buffer.read_bits(length))
+        return length, self._buffer.read_bits(length)
 
     def _blob(self, bounds):
         length = self._int(bounds)
@@ -206,12 +207,12 @@ class VersionedDecoder:
     def _array(self, bounds, typeid):
         self._expect_skip(0)
         length = self._vint()
-        return [self.instance(typeid) for i in xrange(length)]
+        return [self.instance(typeid) for i in six.moves.range(length)]
 
     def _bitarray(self, bounds):
         self._expect_skip(1)
         length = self._vint()
-        return (length, self._buffer.read_aligned_bytes((length + 7) / 8))
+        return length, self._buffer.read_aligned_bytes((length + 7) / 8)
 
     def _blob(self, bounds):
         self._expect_skip(2)
@@ -259,7 +260,7 @@ class VersionedDecoder:
         self._expect_skip(5)
         result = {}
         length = self._vint()
-        for i in xrange(length):
+        for i in six.moves.range(length):
             tag = self._vint()
             field = next((f for f in fields if f[2] == tag), None)
             if field:
@@ -281,7 +282,7 @@ class VersionedDecoder:
         skip = self._buffer.read_bits(8)
         if skip == 0:  # array
             length = self._vint()
-            for i in xrange(length):
+            for i in six.moves.range(length):
                 self._skip_instance()
         elif skip == 1:  # bitblob
             length = self._vint()
@@ -298,7 +299,7 @@ class VersionedDecoder:
                 self._skip_instance()
         elif skip == 5:  # struct
             length = self._vint()
-            for i in xrange(length):
+            for i in six.moves.range(length):
                 tag = self._vint()
                 self._skip_instance()
         elif skip == 6:  # u8

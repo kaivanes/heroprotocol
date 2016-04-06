@@ -21,12 +21,14 @@
 # THE SOFTWARE.
 
 import sys
+import six
 import argparse
 import pprint
 import json
 
 from mpyq import mpyq
 import protocol29406
+
 
 class EventLogger:
     def __init__(self):
@@ -41,14 +43,14 @@ class EventLogger:
             self._event_stats[event['_event']] = stat
         # write structure
         if args.json:
-            s = json.dumps(event, encoding="ISO-8859-1");
-            print(s);
+            s = json.dumps(event, encoding="ISO-8859-1")
+            print(s)
         else:
             pprint.pprint(event, stream=output)
 
     def log_stats(self, output):
-        for name, stat in sorted(self._event_stats.iteritems(), key=lambda x: x[1][1]):
-            print >> output, '"%s", %d, %d,' % (name, stat[0], stat[1] / 8)
+        for name, stat in sorted(six.iteritems(self._event_stats), key=lambda x: x[1][1]):
+            six.print_('"%s", %d, %d,' % (name, stat[0], stat[1] / 8), file=output)
 
 
 if __name__ == '__main__':
@@ -77,7 +79,7 @@ if __name__ == '__main__':
     archive = mpyq.MPQArchive(args.replay_file)
 
     logger = EventLogger()
-    logger.args = args;
+    logger.args = args
 
     # Read the protocol header, this can be read with any protocol
     contents = archive.header['user_data_header']['content']
@@ -90,7 +92,7 @@ if __name__ == '__main__':
     try:
         protocol = __import__('protocol%s' % (baseBuild,))
     except:
-        print >> sys.stderr, 'Unsupported base build: %d' % baseBuild
+        six.print_('Unsupported base build: %d' % baseBuild, file=sys.stderr)
         sys.exit(1)
 
     # Print protocol details
