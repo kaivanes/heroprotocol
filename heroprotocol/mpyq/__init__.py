@@ -1,0 +1,1 @@
+from .mpyq import MPQArchive

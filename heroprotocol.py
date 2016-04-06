@@ -25,9 +25,10 @@ import six
 import argparse
 import pprint
 import json
+import importlib
 
-from mpyq import mpyq
-import protocol29406
+from heroprotocol import mpyq
+from heroprotocol import protocol29406
 
 
 class EventLogger:
@@ -90,7 +91,7 @@ if __name__ == '__main__':
     # The header's baseBuild determines which protocol to use
     baseBuild = header['m_version']['m_baseBuild']
     try:
-        protocol = __import__('protocol%s' % (baseBuild,))
+        protocol = importlib.import_module('protocol%s' % (baseBuild,), 'heroprotocol')
     except:
         six.print_('Unsupported base build: %d' % baseBuild, file=sys.stderr)
         sys.exit(1)
