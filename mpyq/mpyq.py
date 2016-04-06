@@ -5,16 +5,18 @@
 mpyq is a Python library for reading MPQ (MoPaQ) archives.
 """
 
+from __future__ import print_function
+
 import bz2
-import cStringIO
 import os
 import struct
 import zlib
 from collections import namedtuple
+from io import BytesIO
 
 
 __author__ = "Aku Kotkavuo"
-__version__ = "0.2.0"
+__version__ = "0.2.5"
 
 
 MPQ_FILE_IMPLODE        = 0x00000100
@@ -131,14 +133,16 @@ class MPQArchive(object):
         magic = self.file.read(4)
         self.file.seek(0)
 
-        if magic == 'MPQ\x1a':
+        if magic == b'MPQ\x1a':
             header = read_mpq_header()
             header['offset'] = 0
-        elif magic == 'MPQ\x1b':
+        elif magic == b'MPQ\x1b':
             user_data_header = read_mpq_user_data_header()
             header = read_mpq_header(user_data_header['mpq_header_offset'])
             header['offset'] = user_data_header['mpq_header_offset']
             header['user_data_header'] = user_data_header
+        else:
+            raise ValueError("Invalid file header.")
 
         return header
 
@@ -172,7 +176,7 @@ class MPQArchive(object):
         hash_a = self._hash(filename, 'HASH_A')
         hash_b = self._hash(filename, 'HASH_B')
         for entry in self.hash_table:
-            if (entry.hash_a == hash_a and entry.hash_b == hash_b):
+            if entry.hash_a == hash_a and entry.hash_b == hash_b:
                 return entry
 
     def read_file(self, filename, force_decompress=False):
@@ -180,7 +184,7 @@ class MPQArchive(object):
 
         def decompress(data):
             """Read the compression type and decompress file data."""
-            compression_type = ord(data[0])
+            compression_type = ord(data[0:1])
             if compression_type == 0:
                 return data
             elif compression_type == 2:
@@ -211,7 +215,7 @@ class MPQArchive(object):
                 # File consist of many sectors. They all need to be
                 # decompressed separately and united.
                 sector_size = 512 << self.header['sector_size_shift']
-                sectors = block_entry.size / sector_size + 1
+                sectors = block_entry.size // sector_size + 1
                 if block_entry.flags & MPQ_FILE_SECTOR_CRC:
                     crc = True
                     sectors += 1
@@ -219,19 +223,22 @@ class MPQArchive(object):
                     crc = False
                 positions = struct.unpack('<%dI' % (sectors + 1),
                                           file_data[:4*(sectors+1)])
-                result = cStringIO.StringIO()
+                result = BytesIO()
+                sector_bytes_left = block_entry.size
                 for i in range(len(positions) - (2 if crc else 1)):
                     sector = file_data[positions[i]:positions[i+1]]
                     if (block_entry.flags & MPQ_FILE_COMPRESS and
-                        (force_decompress or block_entry.size > block_entry.archived_size)):
+                        (force_decompress or sector_bytes_left > len(sector))):
                         sector = decompress(sector)
+
+                    sector_bytes_left -= len(sector)
                     result.write(sector)
                 file_data = result.getvalue()
             else:
                 # Single unit files only need to be decompressed, but
                 # compression only happens when at least one byte is gained.
                 if (block_entry.flags & MPQ_FILE_COMPRESS and
-                    (force_decompress or block_entry.size > block_entry.archived_size)):
+                        (force_decompress or block_entry.size > block_entry.archived_size)):
                     file_data = decompress(file_data)
 
             return file_data
@@ -251,7 +258,7 @@ class MPQArchive(object):
         os.chdir(archive_name)
         for filename, data in self.extract().items():
             f = open(filename, 'wb')
-            f.write(data)
+            f.write(data or b'')
             f.close()
 
     def extract_files(self, *filenames):
@@ -259,51 +266,51 @@ class MPQArchive(object):
         for filename in filenames:
             data = self.read_file(filename)
             f = open(filename, 'wb')
-            f.write(data)
+            f.write(data or b'')
             f.close()
 
     def print_headers(self):
-        print "MPQ archive header"
-        print "------------------"
-        for key, value in self.header.iteritems():
+        print("MPQ archive header")
+        print("------------------")
+        for key, value in self.header.items():
             if key == "user_data_header":
                 continue
-            print "{0:30} {1!r}".format(key, value)
+            print("{0:30} {1!r}".format(key, value))
         if self.header.get('user_data_header'):
-            print
-            print "MPQ user data header"
-            print "--------------------"
-            for key, value in self.header['user_data_header'].iteritems():
-                print "{0:30} {1!r}".format(key, value)
-        print
+            print()
+            print("MPQ user data header")
+            print("--------------------")
+            for key, value in self.header['user_data_header'].items():
+                print("{0:30} {1!r}".format(key, value))
+        print()
 
     def print_hash_table(self):
-        print "MPQ archive hash table"
-        print "----------------------"
-        print " Hash A   Hash B  Locl Plat BlockIdx"
+        print("MPQ archive hash table")
+        print("----------------------")
+        print(" Hash A   Hash B  Locl Plat BlockIdx")
         for entry in self.hash_table:
-            print '%08X %08X %04X %04X %08X' % entry
-        print
+            print('{0:0>8X} {1:0>8X} {2:0>4X} {3:0>4X} {4:0>8X}'.format(*entry))
+        print()
 
     def print_block_table(self):
-        print "MPQ archive block table"
-        print "-----------------------"
-        print " Offset  ArchSize RealSize  Flags"
+        print("MPQ archive block table")
+        print("-----------------------")
+        print(" Offset  ArchSize RealSize  Flags")
         for entry in self.block_table:
-            print '%08X %8d %8d %8X' % entry
-        print
+            print('{0:0>8X} {1:>8} {2:>8} {3:>8X}'.format(*entry))
+        print()
 
     def print_files(self):
         if self.files:
-            print "Files"
-            print "-----"
+            print("Files")
+            print("-----")
             width = max(len(name) for name in self.files) + 2
             for filename in self.files:
                 hash_entry = self.get_hash_table_entry(filename)
                 block_entry = self.block_table[hash_entry.block_table_index]
-                print "{0:{width}} {1:>8} bytes".format(filename,
+                print("{0:{width}} {1:>8} bytes".format(filename.decode(),
                                                         block_entry.size,
-                                                        width=width)
+                                                        width=width))
 
     def _hash(self, string, hash_type):
         """Hash a string using MPQ's hash function."""
@@ -316,8 +323,8 @@ class MPQArchive(object):
         seed1 = 0x7FED7FED
         seed2 = 0xEEEEEEEE
 
-        for ch in string:
-            ch = ord(ch.upper())
+        for ch in string.upper():
+            if not isinstance(ch, int): ch = ord(ch)
             value = self.encryption_table[(hash_types[hash_type] << 8) + ch]
             seed1 = (value ^ (seed1 + seed2)) & 0xFFFFFFFF
             seed2 = ch + seed1 + seed2 + (seed2 << 5) + 3 & 0xFFFFFFFF
@@ -328,7 +335,7 @@ class MPQArchive(object):
         """Decrypt hash or block table or a sector."""
         seed1 = key
         seed2 = 0xEEEEEEEE
-        result = cStringIO.StringIO()
+        result = BytesIO()
 
         for i in range(len(data) // 4):
             seed2 += self.encryption_table[0x400 + (seed1 & 0xFF)]
